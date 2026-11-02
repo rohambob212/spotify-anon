@@ -5,6 +5,9 @@ edition = "2021"
 description = "Keyless Spotify client: search tracks and fetch full track/album/artist metadata with no API credentials, using the public web player's own anonymous session."
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/rohambob212/spotify-anon"
+homepage = "https://github.com/rohambob212/spotify-anon"
+documentation = "https://docs.rs/spotify-anon"
 keywords = ["spotify", "music", "metadata", "api"]
 categories = ["api-bindings"]
 
