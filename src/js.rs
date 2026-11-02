@@ -86,7 +86,11 @@ pub fn chunk_files(js: &str) -> Vec<String> {
         return Vec::new();
     };
 
-    let shared_with = |m: &Vec<(i64, String)>| m.iter().filter(|(k, _)| hash_map.iter().any(|(hk, _)| hk == k)).count();
+    let shared_with = |m: &Vec<(i64, String)>| {
+        m.iter()
+            .filter(|(k, _)| hash_map.iter().any(|(hk, _)| hk == k))
+            .count()
+    };
 
     // webpack emits the name map directly after the hash map; fall back to the
     // non-hash map sharing the most keys if the layout ever changes.
@@ -120,7 +124,9 @@ pub fn chunk_files(js: &str) -> Vec<String> {
 }
 
 fn is_hash(v: &str) -> bool {
-    v.len() == 8 && v.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    v.len() == 8
+        && v.bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 /// Find the persisted-query hash for `operation` in a chunk body.
@@ -145,7 +151,11 @@ pub fn app_server_config(html: &str) -> Option<serde_json::Value> {
     let open = "<script id=\"appServerConfig\" type=\"text/plain\">";
     let idx = html.find(open)? + open.len();
     let end = html[idx..].find("</script>")?;
-    let raw = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, html[idx..idx + end].trim()).ok()?;
+    let raw = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        html[idx..idx + end].trim(),
+    )
+    .ok()?;
     serde_json::from_slice(&raw).ok()
 }
 

@@ -26,13 +26,16 @@ pub const BUNDLED_SECRETS: &[(u32, &[u8])] = &[
     (
         59,
         &[
-            123, 105, 79, 70, 110, 59, 52, 125, 60, 49, 80, 70, 89, 75, 80, 86, 63, 53, 123, 37, 117,
-            49, 52, 93, 77, 62, 47, 86, 48, 104, 68, 72,
+            123, 105, 79, 70, 110, 59, 52, 125, 60, 49, 80, 70, 89, 75, 80, 86, 63, 53, 123, 37,
+            117, 49, 52, 93, 77, 62, 47, 86, 48, 104, 68, 72,
         ],
     ),
     (
         60,
-        &[79, 109, 69, 123, 90, 65, 46, 74, 94, 34, 58, 48, 70, 71, 92, 85, 122, 63, 91, 64, 87, 87],
+        &[
+            79, 109, 69, 123, 90, 65, 46, 74, 94, 34, 58, 48, 70, 71, 92, 85, 122, 63, 91, 64, 87,
+            87,
+        ],
     ),
     (
         61,
@@ -97,7 +100,7 @@ pub struct Auth {
 }
 
 impl Auth {
-    pub fn new(
+    pub(crate) fn new(
         http: crate::BlockingClient,
         secrets: BTreeMap<u32, Vec<u8>>,
         secrets_url: Option<String>,
@@ -173,7 +176,14 @@ impl Auth {
 
         let now = now_seconds();
         let mut last_error = None;
-        for version in self.secrets.keys().copied().collect::<Vec<_>>().into_iter().rev() {
+        for version in self
+            .secrets
+            .keys()
+            .copied()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+        {
             let ver = version.to_string();
             let cipher = &self.secrets[&version];
             let code = totp::totp_code(&totp::totp_secret_b32(cipher), now);

@@ -1,7 +1,9 @@
 //! `cargo run --example search -- "daft punk get lucky"`
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let query = std::env::args().nth(1).unwrap_or_else(|| "get lucky".to_string());
+    let query = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "get lucky".to_string());
     let limit = std::env::args()
         .nth(2)
         .and_then(|n| n.parse().ok())

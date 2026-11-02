@@ -74,24 +74,35 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 const DEFAULT_CACHE_FILE: &str = "spotify-anon/queries.json";
 
-/// `reqwest::blocking::Client` owns a private tokio runtime, and shutting one
-/// down *from inside an async context* panics ("Cannot drop a runtime in a
-/// context where blocking is not allowed"). That is easy to hit by accident:
-/// `let spotify = Spotify::new()?;` inside `#[tokio::main]` is fine until the
-/// client drops at the end of the function, and the panic then points at the
-/// caller's runtime, not at Spotify.
+/// Holder for `reqwest::blocking::Client`, which owns a private tokio runtime.
 ///
-/// This holder hands the client to a plain thread on drop, so the shutdown never
-/// happens on a thread that has a runtime context. Clones share one client (and
-/// therefore one runtime), so the hand-off runs exactly once, when the last
-/// clone goes.
+/// Two independent traps live in that runtime, and they are easy to confuse:
+///
+/// 1. **Creating or using** the blocking client inside an async context is not
+///    supported. Debug builds trip a deliberate assertion in
+///    `reqwest::blocking::wait::enter()` and panic with "Cannot drop a runtime in
+///    a context where blocking is not allowed"; release builds silently block the
+///    executor thread instead. Nothing in this crate can make that safe — call
+///    [`AsyncSpotify`](crate::AsyncSpotify), or `tokio::task::spawn_blocking`, and
+///    keep the whole client lifecycle inside the blocking task.
+/// 2. **Dropping** the client inside an async context panics too, on the runtime
+///    shutdown. That one *is* fixable, and this holder fixes it: the client is
+///    handed to a plain thread on drop, so the shutdown never runs on a thread
+///    that has a runtime context. Clones share one client (and one runtime), so
+///    the hand-off happens once, when the last clone goes.
+///
+/// Practical consequence: a client you built on a plain thread (or inside
+/// `spawn_blocking`) can be dropped from async code safely, even though it must
+/// not be *used* there.
 pub(crate) struct ClientHolder {
     client: std::mem::ManuallyDrop<reqwest::blocking::Client>,
 }
 
 impl ClientHolder {
     fn new(client: reqwest::blocking::Client) -> Self {
-        Self { client: std::mem::ManuallyDrop::new(client) }
+        Self {
+            client: std::mem::ManuallyDrop::new(client),
+        }
     }
 }
 
@@ -127,7 +138,13 @@ impl Deref for BlockingClient {
 /// Anonymous Spotify client. Cheap to clone-share behind an `Arc`; all methods
 /// take `&self` and the session is refreshed internally.
 ///
-/// Safe to build, use and drop inside an async runtime — see [`ClientHolder`].
+/// **Not callable from an async context.** `reqwest::blocking` panics in debug
+/// builds (and blocks the executor in release) when the client is built or used
+/// inside a runtime — that is reqwest's documented behaviour, not something this
+/// crate can paper over. From async code use [`AsyncSpotify`](crate::AsyncSpotify)
+/// (feature `async`), or keep the whole client lifecycle inside
+/// `tokio::task::spawn_blocking`. See [`ClientHolder`] for the one trap this
+/// crate does fix (the drop).
 pub struct Spotify {
     http: BlockingClient,
     auth: Auth,
@@ -152,7 +169,12 @@ impl Spotify {
     }
 
     /// Search tracks with an explicit offset for paging.
-    pub fn search_tracks_page(&self, query: &str, limit: usize, offset: usize) -> Result<Vec<TrackHit>> {
+    pub fn search_tracks_page(
+        &self,
+        query: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<TrackHit>> {
         let limit = limit.clamp(1, 50);
         let response = self.pathfinder(
             "searchTracks",
@@ -491,10 +513,7 @@ impl Builder {
 
     /// Replace the TOTP secret table entirely, e.g.
     /// `Builder::totp_secrets([(61, vec![...])])`.
-    pub fn totp_secrets(
-        mut self,
-        secrets: impl IntoIterator<Item = (u32, Vec<u8>)>,
-    ) -> Self {
+    pub fn totp_secrets(mut self, secrets: impl IntoIterator<Item = (u32, Vec<u8>)>) -> Self {
         self.secrets = secrets.into_iter().collect();
         self
     }
@@ -703,16 +722,22 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn sync_client_is_safe_inside_an_async_runtime() {
-        // Regression: reqwest's blocking client shuts its private tokio runtime
-        // down on drop, and doing that inside an async context panics with
-        // "Cannot drop a runtime in a context where blocking is not allowed".
-        // Offline: a bad id fails before any request, secret refresh disabled.
-        let spotify = Builder::new()
-            .secrets_url(None::<&str>)
-            .cache_path(None)
-            .build()
-            .unwrap();
+    async fn client_built_elsewhere_can_be_dropped_inside_a_runtime() {
+        // Regression: reqwest's blocking runtime shuts down on drop, and doing
+        // that inside an async context panics with "Cannot drop a runtime in a
+        // context where blocking is not allowed". Building/using the client here
+        // is NOT supported (reqwest asserts in debug), so build it on a plain
+        // thread and only drop it inside the runtime. Offline: a bad id fails
+        // before any request, secret refresh disabled.
+        let spotify = std::thread::spawn(|| {
+            Builder::new()
+                .secrets_url(None::<&str>)
+                .cache_path(None)
+                .build()
+        })
+        .join()
+        .expect("builder thread")
+        .expect("build client");
         assert!(matches!(spotify.track("nope"), Err(Error::BadId(_))));
         drop(spotify);
     }
@@ -728,14 +753,24 @@ mod tests {
     fn parses_search_payload() {
         let json = r#"{"data":{"searchV2":{"tracksV2":{"items":[{"item":{"__typename":"TrackResponseWrapper","data":{"id":"2c2zC1S8akQlTZpvR3o8Ih","uri":"spotify:track:2c2zC1S8akQlTZpvR3o8Ih","name":"Get Lucky","duration":{"totalMilliseconds":248000},"contentRating":{"label":"NONE"},"playability":{"playable":true},"artists":{"items":[{"profile":{"name":"Daft Punk"}},{"profile":{"name":"Pharrell Williams"}}]},"albumOfTrack":{"id":"4m2880jivSbbyEGAKfITCa","name":"Random Access Memories","coverArt":{"sources":[{"url":"https://i.scdn.co/image/small","width":64},{"url":"https://i.scdn.co/image/big","width":640}]}}}}}]}}}}"#;
         let root: SearchRoot = serde_json::from_str(json).unwrap();
-        let items = root.data.unwrap().search_v2.unwrap().tracks_v2.unwrap().items;
+        let items = root
+            .data
+            .unwrap()
+            .search_v2
+            .unwrap()
+            .tracks_v2
+            .unwrap()
+            .items;
         let hit = items.into_iter().next().unwrap().item.data.into_hit();
         assert_eq!(hit.name, "Get Lucky");
         assert_eq!(hit.artists, vec!["Daft Punk", "Pharrell Williams"]);
         assert_eq!(hit.album.as_deref(), Some("Random Access Memories"));
         assert_eq!(hit.album_id.as_deref(), Some("4m2880jivSbbyEGAKfITCa"));
         assert_eq!(hit.duration_ms, Some(248_000));
-        assert_eq!(hit.cover_url.as_deref(), Some("https://i.scdn.co/image/big"));
+        assert_eq!(
+            hit.cover_url.as_deref(),
+            Some("https://i.scdn.co/image/big")
+        );
         assert_eq!(hit.playable, Some(true));
         assert!(!hit.explicit);
     }

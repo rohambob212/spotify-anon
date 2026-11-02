@@ -71,12 +71,23 @@ allowed"). Consequences, so they are not surprises:
 - if you ever need thousands of concurrent requests, write a native
   `reqwest::Client` implementation rather than enlarging this pool
 
-The **sync** client is safe to use from async code too: `reqwest::blocking`'s
-private runtime is handed to a plain thread on drop, so
-`let spotify = Spotify::new()?;` inside `#[tokio::main]` no longer panics with
-"Cannot drop a runtime in a context where blocking is not allowed". The panic
-used to surface at the *end* of a function, pointing at the caller's runtime
-rather than at Spotify.
+The **sync** client must not be built or called from async code — reqwest's
+blocking client panics in debug builds ("Cannot drop a runtime in a context
+where blocking is not allowed") and blocks the executor in release. Use
+`AsyncSpotify` for that, or keep the whole lifecycle inside a blocking task:
+
+```rust
+let track = tokio::task::spawn_blocking(move || {
+    let spotify = spotify_anon::Spotify::new()?;   // built inside the task
+    spotify.track("5ThumMdlPp3BWqSMdLefea")
+})
+.await??;
+```
+
+One trap *is* fixed inside the crate: a client built on a plain thread (or inside
+`spawn_blocking`) can be **dropped** from async code. Without that, dropping it in
+an async context panicked on reqwest's runtime shutdown even when it had been
+built and used correctly.
 
 ## How it works
 

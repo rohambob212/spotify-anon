@@ -23,19 +23,33 @@ fn main() -> Result<(), spotify_anon::Error> {
 
     let t = Instant::now();
     let version = spotify.client_version()?;
-    println!("session (home page + TOTP + token + client token): {:?}  [{version}]", t.elapsed());
+    println!(
+        "session (home page + TOTP + token + client token): {:?}  [{version}]",
+        t.elapsed()
+    );
 
     let t = Instant::now();
     let track = spotify.track("45bsaWbpYBd7VdNxBwY3qe")?;
-    println!("track by id (no query hash needed):                  {:?}  [{}]", t.elapsed(), track.name);
+    println!(
+        "track by id (no query hash needed):                  {:?}  [{}]",
+        t.elapsed(),
+        track.name
+    );
 
     let t = Instant::now();
     let hits = spotify.search_tracks("googoosh makhlough", 1)?;
-    println!("search #1 (may resolve the query hash):             {:?}  [{} hits]", t.elapsed(), hits.len());
+    println!(
+        "search #1 (may resolve the query hash):             {:?}  [{} hits]",
+        t.elapsed(),
+        hits.len()
+    );
 
     let t = Instant::now();
     let _ = spotify.search_tracks("daft punk", 1)?;
-    println!("search #2 (same session):                           {:?}", t.elapsed());
+    println!(
+        "search #2 (same session):                           {:?}",
+        t.elapsed()
+    );
 
     Ok(())
 }

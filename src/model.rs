@@ -443,7 +443,10 @@ mod tests {
             gid_to_id("c194bb60a279473baa7eaaab041dfe8a").as_deref(),
             Some("5ThumMdlPp3BWqSMdLefea")
         );
-        assert!(gid_to_id("4m2880jivSbbyEGAKfITCa").is_none(), "gid_to_id takes hex gids");
+        assert!(
+            gid_to_id("4m2880jivSbbyEGAKfITCa").is_none(),
+            "gid_to_id takes hex gids"
+        );
         assert!(id_to_gid("4m2880jivSbbyEGAKfITCa").is_some());
     }
 
@@ -451,7 +454,10 @@ mod tests {
     fn accepts_uri_and_url_id_forms() {
         let id = "5ThumMdlPp3BWqSMdLefea";
         assert_eq!(parse_id(id).as_deref(), Some(id));
-        assert_eq!(parse_id(&format!("spotify:track:{id}")).as_deref(), Some(id));
+        assert_eq!(
+            parse_id(&format!("spotify:track:{id}")).as_deref(),
+            Some(id)
+        );
         assert_eq!(
             parse_id(&format!("https://open.spotify.com/track/{id}?si=abc")).as_deref(),
             Some(id)
@@ -464,9 +470,18 @@ mod tests {
         let id = "5ThumMdlPp3BWqSMdLefea";
         for (input, expected) in [
             (format!("spotify:track:{id}"), Kind::Track),
-            (format!("https://open.spotify.com/track/{id}?si=abc"), Kind::Track),
-            (format!("https://open.spotify.com/intl-de/album/{id}"), Kind::Album),
-            (format!("https://open.spotify.com/playlist/{id}"), Kind::Playlist),
+            (
+                format!("https://open.spotify.com/track/{id}?si=abc"),
+                Kind::Track,
+            ),
+            (
+                format!("https://open.spotify.com/intl-de/album/{id}"),
+                Kind::Album,
+            ),
+            (
+                format!("https://open.spotify.com/playlist/{id}"),
+                Kind::Playlist,
+            ),
             (id.to_string(), Kind::Unknown),
         ] {
             let (kind, parsed) = parse_link(&input).unwrap_or_else(|| panic!("{input}"));
@@ -491,6 +506,9 @@ mod tests {
         assert_eq!(track.isrc().as_deref(), Some("DEBL60547570"));
         assert_eq!(track.album_name().as_deref(), Some("Fetneh Chakmehpoosh"));
         assert_eq!(track.duration_secs().round() as u32, 216);
-        assert!(track.cover_url("DEFAULT").unwrap().starts_with("https://i.scdn.co/image/"));
+        assert!(track
+            .cover_url("DEFAULT")
+            .unwrap()
+            .starts_with("https://i.scdn.co/image/"));
     }
 }

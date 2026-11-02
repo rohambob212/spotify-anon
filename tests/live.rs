@@ -32,7 +32,10 @@ fn track_by_id_has_full_metadata() {
     assert_eq!(track.artists(), vec!["Fereydoon Foroughi"]);
     assert_eq!(track.id().as_deref(), Some("5ThumMdlPp3BWqSMdLefea"));
     assert_eq!(track.isrc().as_deref(), Some("DEBL60547570"));
-    assert_eq!(track.album_name().as_deref(), Some("Fetneh Chakmehpoosh (Persian Music)"));
+    assert_eq!(
+        track.album_name().as_deref(),
+        Some("Fetneh Chakmehpoosh (Persian Music)")
+    );
     assert_eq!(track.duration_ms, 216_137);
     assert!(track.cover_url("DEFAULT").is_some());
 
@@ -49,7 +52,11 @@ fn track_by_id_has_full_metadata() {
 #[ignore = "network"]
 fn batch_tracks_and_entities() {
     let spotify = Spotify::new().unwrap();
-    let ids = ["5ThumMdlPp3BWqSMdLefea", "45bsaWbpYBd7VdNxBwY3qe", "2goEbU50JgAVpLVhTDLo36"];
+    let ids = [
+        "5ThumMdlPp3BWqSMdLefea",
+        "45bsaWbpYBd7VdNxBwY3qe",
+        "2goEbU50JgAVpLVhTDLo36",
+    ];
     let tracks = spotify.tracks(&ids).unwrap();
     assert_eq!(tracks.len(), 3);
     for track in &tracks {
@@ -76,7 +83,10 @@ fn batch_tracks_and_entities() {
 #[ignore = "network"]
 fn search_head_can_be_fetched_in_full() {
     let spotify = Spotify::new().unwrap();
-    let hit = spotify.search_tracks("random access memories get lucky", 1).unwrap().remove(0);
+    let hit = spotify
+        .search_tracks("random access memories get lucky", 1)
+        .unwrap()
+        .remove(0);
     let track = spotify.track(&hit.id).unwrap();
     assert_eq!(track.name, hit.name);
     assert_eq!(track.id().as_deref(), Some(hit.id.as_str()));

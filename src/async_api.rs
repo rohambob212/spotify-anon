@@ -78,7 +78,10 @@ impl AsyncSpotify {
             .map(|index| spawn_worker(index, Arc::clone(&factory)))
             .collect();
         Self {
-            pool: Arc::new(Pool { workers, next: AtomicUsize::new(0) }),
+            pool: Arc::new(Pool {
+                workers,
+                next: AtomicUsize::new(0),
+            }),
         }
     }
 
@@ -208,14 +211,21 @@ mod tests {
     fn handle_is_shareable_and_pool_is_bounded() {
         assert_send_sync::<AsyncSpotify>();
         let spotify = AsyncSpotify::new();
-        assert!((1..=4).contains(&spotify.pool_size()), "{}", spotify.pool_size());
+        assert!(
+            (1..=4).contains(&spotify.pool_size()),
+            "{}",
+            spotify.pool_size()
+        );
     }
 
     #[tokio::test]
     async fn bad_ids_fail_without_touching_the_network() {
         let spotify = AsyncSpotify::new();
         assert!(matches!(spotify.track("nope").await, Err(Error::BadId(_))));
-        assert!(matches!(spotify.tracks(vec!["x".into()]).await, Err(Error::BadId(_))));
+        assert!(matches!(
+            spotify.tracks(vec!["x".into()]).await,
+            Err(Error::BadId(_))
+        ));
         assert!(matches!(spotify.album("").await, Err(Error::BadId(_))));
     }
 
@@ -223,7 +233,10 @@ mod tests {
     #[ignore = "network"]
     async fn search_and_track_work_from_async() {
         let spotify = AsyncSpotify::new();
-        let hits = spotify.search_tracks("daft punk get lucky", 3).await.unwrap();
+        let hits = spotify
+            .search_tracks("daft punk get lucky", 3)
+            .await
+            .unwrap();
         assert!(!hits.is_empty());
 
         let track = spotify.track("5ThumMdlPp3BWqSMdLefea").await.unwrap();
