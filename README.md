@@ -4,6 +4,18 @@ Keyless Spotify metadata client. Search tracks and fetch full track / album /
 artist metadata **without a client id, client secret, or user login** — it does
 what Spotify's own web player does for every anonymous visitor.
 
+## Install
+
+From GitHub (works now — no crates.io release needed):
+
+```toml
+[dependencies]
+spotify-anon = { git = "https://github.com/rohambob212/spotify-anon", tag = "v0.1.0" }
+```
+
+Pin `rev = "<commit>"` instead of `tag` if you want a frozen build. Once the
+crate is published, this becomes `spotify-anon = "0.1"`.
+
 ```rust
 let spotify = spotify_anon::Spotify::new()?;              // no credentials anywhere
 
