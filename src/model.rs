@@ -23,6 +23,64 @@ pub fn parse_id(input: &str) -> Option<String> {
     }
 }
 
+/// What kind of thing a Spotify id refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    Track,
+    Album,
+    Artist,
+    Playlist,
+    Episode,
+    Show,
+    Unknown,
+}
+
+impl Kind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Kind::Track => "track",
+            Kind::Album => "album",
+            Kind::Artist => "artist",
+            Kind::Playlist => "playlist",
+            Kind::Episode => "episode",
+            Kind::Show => "show",
+            Kind::Unknown => "unknown",
+        }
+    }
+
+    fn from_token(token: &str) -> Option<Self> {
+        Some(match token {
+            "track" => Kind::Track,
+            "album" => Kind::Album,
+            "artist" => Kind::Artist,
+            "playlist" => Kind::Playlist,
+            "episode" => Kind::Episode,
+            "show" => Kind::Show,
+            _ => return None,
+        })
+    }
+}
+
+/// Split any accepted link form into its kind and bare id.
+///
+/// Accepts `spotify:track:<id>`, `https://open.spotify.com/track/<id>?si=...`,
+/// locale-prefixed URLs (`/intl-de/track/<id>`) and a bare id (kind
+/// [`Kind::Unknown`], since a bare id carries no type).
+pub fn parse_link(input: &str) -> Option<(Kind, String)> {
+    let trimmed = input.trim();
+    let without_query = trimmed.split(['?', '#']).next().unwrap_or(trimmed);
+    let id = parse_id(trimmed)?;
+    let kind = without_query
+        .trim_end_matches('/')
+        .rsplit([':', '/'])
+        .skip_while(|part| *part != id)
+        .skip(1)
+        .find_map(Kind::from_token)
+        .unwrap_or(Kind::Unknown);
+    Some((kind, id))
+}
+
 const B62: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /// base62 id -> 32 char hex gid (what `spclient` metadata endpoints want).
@@ -399,6 +457,24 @@ mod tests {
             Some(id)
         );
         assert_eq!(parse_id("nope").as_deref(), None);
+    }
+
+    #[test]
+    fn parse_link_yields_kind_and_id() {
+        let id = "5ThumMdlPp3BWqSMdLefea";
+        for (input, expected) in [
+            (format!("spotify:track:{id}"), Kind::Track),
+            (format!("https://open.spotify.com/track/{id}?si=abc"), Kind::Track),
+            (format!("https://open.spotify.com/intl-de/album/{id}"), Kind::Album),
+            (format!("https://open.spotify.com/playlist/{id}"), Kind::Playlist),
+            (id.to_string(), Kind::Unknown),
+        ] {
+            let (kind, parsed) = parse_link(&input).unwrap_or_else(|| panic!("{input}"));
+            assert_eq!(kind, expected, "{input}");
+            assert_eq!(parsed, id, "{input}");
+        }
+        assert!(parse_link("not a link").is_none());
+        assert_eq!(Kind::Track.as_str(), "track");
     }
 
     #[test]

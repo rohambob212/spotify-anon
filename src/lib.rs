@@ -29,6 +29,12 @@ pub mod js;
 pub mod model;
 pub mod totp;
 
+#[cfg(feature = "async")]
+mod async_api;
+
+#[cfg(feature = "async")]
+pub use async_api::AsyncSpotify;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -37,7 +43,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-pub use model::{parse_id, to_uri, Album, Artist, Track, TrackHit};
+pub use model::{parse_id, parse_link, to_uri, Album, Artist, Kind, Track, TrackHit};
 pub use model::{
     AlbumRef, AlbumTrack, ArtistGroup, ArtistRef, Biography, Copyright, CoverGroup, Date, Disc,
     ExternalId, GidRef, Image,

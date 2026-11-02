@@ -38,9 +38,38 @@ println!("{} — {}", track.name, track.artists().join(", "));
 
 Ids are accepted as a bare id (`5ThumMdlPp3BWqSMdLefea`), a URI
 (`spotify:track:…`) or a URL (`https://open.spotify.com/track/…`).
+`parse_link(input)` returns `(Kind, id)` when you need to know *what* the link
+points at; `parse_id(input)` when you only need the id.
 
 Handy accessors: `Track::id/uri/isrc/album_id/album_name/artists/cover_url(size)`
 (with `gid_to_id`/`id_to_gid` for the hex gids `spclient` uses).
+
+## Async
+
+Enable the `async` feature to get the same client as an awaited handle:
+
+```toml
+spotify-anon = { git = "https://github.com/rohambob212/spotify-anon", tag = "v0.2.0", features = ["async"] }
+```
+
+```rust
+let spotify = spotify_anon::AsyncSpotify::new();       // pool of min(cores, 4)
+let hits = spotify.search_tracks("daft punk", 5).await?;
+let track = spotify.track("5ThumMdlPp3BWqSMdLefea").await?;
+```
+
+It is deliberately *not* a second implementation of the protocol. Requests run
+on a small pool of dedicated OS threads around the verified blocking client,
+because `reqwest::blocking` owns a tokio runtime and dropping one inside an async
+context panics ("Cannot drop a runtime in a context where blocking is not
+allowed"). Consequences, so they are not surprises:
+
+- concurrency is bounded by the pool — size it with
+  `AsyncSpotify::with_pool(n, factory)`, calls beyond that queue
+- each worker holds its own anonymous session (one extra token call per worker)
+- `tokio::join!` over a cloned handle really does run in parallel
+- if you ever need thousands of concurrent requests, write a native
+  `reqwest::Client` implementation rather than enlarging this pool
 
 ## How it works
 
