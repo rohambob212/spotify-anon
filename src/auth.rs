@@ -90,7 +90,7 @@ impl Session {
 }
 
 pub struct Auth {
-    http: reqwest::blocking::Client,
+    http: crate::BlockingClient,
     secrets: BTreeMap<u32, Vec<u8>>,
     secrets_url: Option<String>,
     session: Mutex<Option<Session>>,
@@ -98,7 +98,7 @@ pub struct Auth {
 
 impl Auth {
     pub fn new(
-        http: reqwest::blocking::Client,
+        http: crate::BlockingClient,
         secrets: BTreeMap<u32, Vec<u8>>,
         secrets_url: Option<String>,
     ) -> Self {

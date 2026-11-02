@@ -3,28 +3,75 @@ name: ci
 on:
   push:
     branches: [main, master]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default (sync)
+            flags: ""
+          - name: async facade
+            flags: "--features async"
+    name: test — ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test --lib # offline: unit tests only
-      - run: cargo test --doc
-      - run: cargo package --list --allow-dirty
+      - run: cargo clippy --all-targets ${{ matrix.flags }} -- -D warnings
+      - run: cargo test --lib ${{ matrix.flags }}
+      - run: cargo test --doc ${{ matrix.flags }}
+
+  package:
+    runs-on: ubuntu-latest
+    name: package
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # catches missing files, bad metadata and a broken packaged build
+      - run: cargo publish --dry-run
 
   live:
-    # hits Spotify's private API, so it is manual and allowed to fail
-    if: github.event_name == 'workflow_dispatch'
+    # hits Spotify's private API: manual runs and tags only, allowed to fail
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    name: live (network, non-blocking)
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --test live -- --ignored --test-threads=1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --features async -- --ignored --test-threads=1
+
+  publish:
+    # publishes a tag once CARGO_REGISTRY_TOKEN exists as a repo secret, so the
+    # token never has to leave GitHub (and is never echoed here)
+    needs: [test, package]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    name: publish to crates.io
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "no CARGO_REGISTRY_TOKEN secret set — skipping publish"
+            exit 0
+          fi
+          cargo publish

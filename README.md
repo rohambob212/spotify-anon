@@ -71,6 +71,13 @@ allowed"). Consequences, so they are not surprises:
 - if you ever need thousands of concurrent requests, write a native
   `reqwest::Client` implementation rather than enlarging this pool
 
+The **sync** client is safe to use from async code too: `reqwest::blocking`'s
+private runtime is handed to a plain thread on drop, so
+`let spotify = Spotify::new()?;` inside `#[tokio::main]` no longer panics with
+"Cannot drop a runtime in a context where blocking is not allowed". The panic
+used to surface at the *end* of a function, pointing at the caller's runtime
+rather than at Spotify.
+
 ## How it works
 
 Three keyless calls, all of them things the browser does when you open

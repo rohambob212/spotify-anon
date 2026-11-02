@@ -1,6 +1,6 @@
 [package]
 name = "spotify-anon"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Keyless Spotify client: search tracks and fetch full track/album/artist metadata with no API credentials, using the public web player's own anonymous session."
 license = "MIT"

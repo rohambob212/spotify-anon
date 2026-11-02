@@ -36,8 +36,9 @@ mod async_api;
 pub use async_api::AsyncSpotify;
 
 use std::collections::BTreeMap;
+use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -73,10 +74,62 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 const DEFAULT_CACHE_FILE: &str = "spotify-anon/queries.json";
 
+/// `reqwest::blocking::Client` owns a private tokio runtime, and shutting one
+/// down *from inside an async context* panics ("Cannot drop a runtime in a
+/// context where blocking is not allowed"). That is easy to hit by accident:
+/// `let spotify = Spotify::new()?;` inside `#[tokio::main]` is fine until the
+/// client drops at the end of the function, and the panic then points at the
+/// caller's runtime, not at Spotify.
+///
+/// This holder hands the client to a plain thread on drop, so the shutdown never
+/// happens on a thread that has a runtime context. Clones share one client (and
+/// therefore one runtime), so the hand-off runs exactly once, when the last
+/// clone goes.
+pub(crate) struct ClientHolder {
+    client: std::mem::ManuallyDrop<reqwest::blocking::Client>,
+}
+
+impl ClientHolder {
+    fn new(client: reqwest::blocking::Client) -> Self {
+        Self { client: std::mem::ManuallyDrop::new(client) }
+    }
+}
+
+impl Drop for ClientHolder {
+    fn drop(&mut self) {
+        // SAFETY: taken exactly once, in drop, and never touched again.
+        let client = unsafe { std::mem::ManuallyDrop::take(&mut self.client) };
+        // If the thread cannot be spawned the client is dropped here, which is
+        // the status quo ante; nothing worse than the unfixed behaviour.
+        let _ = std::thread::Builder::new()
+            .name("spotify-anon-dispose".into())
+            .spawn(move || drop(client));
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct BlockingClient(Arc<ClientHolder>);
+
+impl BlockingClient {
+    pub(crate) fn new(client: reqwest::blocking::Client) -> Self {
+        Self(Arc::new(ClientHolder::new(client)))
+    }
+}
+
+impl Deref for BlockingClient {
+    type Target = reqwest::blocking::Client;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.client
+    }
+}
+
 /// Anonymous Spotify client. Cheap to clone-share behind an `Arc`; all methods
 /// take `&self` and the session is refreshed internally.
+///
+/// Safe to build, use and drop inside an async runtime — see [`ClientHolder`].
 pub struct Spotify {
-    http: reqwest::blocking::Client,
+    http: BlockingClient,
     auth: Auth,
     hashes: Mutex<BTreeMap<String, String>>,
     cache_path: Option<PathBuf>,
@@ -467,6 +520,7 @@ impl Builder {
                 .user_agent(&self.user_agent)
                 .build()?,
         };
+        let http = BlockingClient::new(http);
         let mut auth = Auth::new(http.clone(), self.secrets, self.secrets_url);
         auth.refresh_secrets()?;
         Ok(Spotify {
@@ -647,6 +701,21 @@ impl SearchTrack {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn sync_client_is_safe_inside_an_async_runtime() {
+        // Regression: reqwest's blocking client shuts its private tokio runtime
+        // down on drop, and doing that inside an async context panics with
+        // "Cannot drop a runtime in a context where blocking is not allowed".
+        // Offline: a bad id fails before any request, secret refresh disabled.
+        let spotify = Builder::new()
+            .secrets_url(None::<&str>)
+            .cache_path(None)
+            .build()
+            .unwrap();
+        assert!(matches!(spotify.track("nope"), Err(Error::BadId(_))));
+        drop(spotify);
+    }
 
     #[test]
     fn urlencode_keeps_unreserved_and_escapes_the_rest() {
